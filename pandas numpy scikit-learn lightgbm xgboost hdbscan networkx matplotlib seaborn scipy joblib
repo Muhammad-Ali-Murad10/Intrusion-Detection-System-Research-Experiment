@@ -1,0 +1,13 @@
+pandas
+numpy
+scikit-learn
+lightgbm
+xgboost
+hdbscan
+networkx
+matplotlib
+seaborn
+scipy
+joblib
+
+Tested on Google Colab (Python 3.10)
