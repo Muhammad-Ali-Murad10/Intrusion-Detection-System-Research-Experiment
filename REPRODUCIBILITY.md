@@ -46,4 +46,3 @@ README.md
 RESULTS.md
 REPRODUCIBILITY.md
 requirements.txt
-results/
