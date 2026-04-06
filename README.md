@@ -153,7 +153,6 @@ This makes the project more realistic than a standard notebook that reports only
 - `RESULTS.md` — structured result tables and interpretation
 - `REPRODUCIBILITY.md` — reproducibility notes and current gaps
 - `requirements.txt` — dependencies
-- `results/` — exported result summaries and artefacts
 
 ## Reproducibility note
 
