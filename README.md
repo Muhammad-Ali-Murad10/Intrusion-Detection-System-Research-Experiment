@@ -1,282 +1,165 @@
-# Intrusion Detection System Research Experiment
+# Machine Learning Intrusion Detection System (CIC-IDS2017)
+
+This repository contains my research-oriented intrusion detection experiment on the CIC-IDS2017 dataset. The project investigates how well a two-stage machine learning pipeline can detect malicious traffic and classify attack families under both optimistic and realistic evaluation settings.
 
 ## Overview
 
-This repository contains a **research-oriented experimentation notebook** exploring **Intrusion Detection Systems (IDS)** using machine learning and anomaly detection techniques.
+The pipeline is structured in two levels:
 
-The project was developed as a **semester research project during my Bachelor's degree** after being introduced to the topic of Intrusion Detection Systems in class.
+- **Level 1:** Binary classification (`BENIGN` vs `ATTACK`)
+- **Level 2:** Multi-class attack-family classification (`DoS`, `PortScan`, `BruteForce`, `WebAttack`, `Bot`)
 
-While exploring public cybersecurity datasets, I discovered that network traffic datasets such as **CIC-IDS2017** are **highly imbalanced and structurally complex**. This motivated me to investigate how different machine learning approaches behave under realistic deployment conditions.
+The goal of this work was not only to obtain strong random-split performance, but also to test whether the system generalizes under more realistic deployment-style conditions such as time-like evaluation and leave-one-file-out testing.
 
-The notebook implements a **multi-stage IDS pipeline** inspired by **two-stage anomaly detection concepts used in CERN’s Large Hadron Collider (LHC)** research, where detection is performed in stages:
+## Dataset
 
-- **Stage 1:** Fast anomaly detection  
-- **Stage 2:** Detailed classification and investigation  
+The experiment uses **CIC-IDS2017**, loaded from 8 CSV files. In the notebook output, the dataset is shown with:
 
-This idea was adapted to the **Intrusion Detection System domain**.
+- **2,830,743 rows** initially loaded
+- **80 columns** before later cleaning steps
+- a `_source_file` column to preserve file-level origin
+- a `Label` column for attack labels
 
----
+After cleaning and preprocessing shown in the notebook:
 
-# Dataset
+- **308,381 duplicates** were removed
+- **8 constant columns** were dropped
+- the final feature matrix shape became **(2,522,362, 70)**
 
-### Dataset Used
+## Label structure
 
-**CIC-IDS2017**
+### Level 1 labels
+- `BENIGN`
+- `ATTACK`
 
-The dataset contains **network flow features extracted from simulated enterprise network traffic**, including multiple attack scenarios.
+### Level 2 families
+- `DoS`
+- `PortScan`
+- `BruteForce`
+- `WebAttack`
+- `Bot`
+- `TrueRare`
 
-### Dataset Characteristics Observed During Analysis
+The notebook output shows the following family counts:
 
-- **Total rows (raw):** ~2.8M  
-- **After cleaning:** ~2.5M  
-- **Features:** ~70  
-- **Capture files:** 8  
+- `BENIGN`: 2,273,097
+- `DoS`: 380,688
+- `PortScan`: 158,930
+- `BruteForce`: 13,835
+- `WebAttack`: 2,180
+- `Bot`: 1,966
+- `TrueRare`: 47
 
-Each file represents a **different time period and attack scenario**.
+## Preprocessing
 
-### Important Observation During Experimentation
+The experiment includes the following preprocessing steps:
 
-Most files contain **only a single attack family**, which strongly affects **multi-class classification evaluation**.
+- duplicate removal
+- constant-column removal
+- replacement of infinite values
+- median filling for missing values
+- log transform for rate-based features such as:
+  - `Flow Bytes/s`
+  - `Flow Packets/s`
+  - `Fwd Packets/s`
+  - `Bwd Packets/s`
+- robust scaling using `RobustScaler`
 
-### Example Distribution
+## Models
 
-| File | Dominant Attack |
-|-----|----------------|
-| Monday | BENIGN |
-| Tuesday | BruteForce |
-| Wednesday | DoS |
-| Thursday Morning | WebAttack |
-| Friday Morning | Bot |
-| Friday Afternoon | DDoS |
-| Friday Afternoon | PortScan |
+### Level 1
+A LightGBM binary classifier is used for `BENIGN` vs `ATTACK`.
 
-This structural characteristic introduces challenges for **cross-file generalization**.
+Additional steps:
+- class weighting
+- isotonic probability calibration
+- threshold tuning based on target recall
 
----
+### Level 2
+A LightGBM multiclass classifier is used for attack-family classification.
 
-# Research Pipeline
+### Additional analysis
+The notebook also includes:
+- `IsolationForest`
+- `HDBSCAN`
+- graph/network-style analysis components
 
-The IDS pipeline follows a **multi-stage architecture**:
+## Evaluation settings
 
-```
-Sense → Detect → Investigate → Decide → Learn
-```
+This repository includes multiple evaluation styles:
 
----
+1. **Optimistic row-random split**
+2. **Calibrated and threshold-tuned binary evaluation**
+3. **Time-like evaluation**
+4. **Leave-one-file-out style realism checks**
 
-## 1. Sense
+This is important because row-random evaluation produced nearly perfect metrics, but realistic cross-file evaluation showed clear generalization challenges.
 
-Network flow data is collected and cleaned.
+## Main results
 
-Processing includes:
+### Level 1: optimistic row-random result
 
-- Duplicate removal
-- Constant column removal
-- Feature scaling using **RobustScaler**
+Confusion matrix:
 
----
+[[418490, 807],
+ [40, 85136]]
 
-## 2. Detect
+Metrics:
+- ROC-AUC: **0.9999661318781935**
+- PR-AUC: **0.9998246003994076**
 
-Two-stage supervised detection is implemented.
+### Level 1: calibrated + tuned-threshold result
 
-### Level 1 (L1)
+Chosen threshold:
+- **0.9770408163265306**
 
-Binary classification:
+Confusion matrix:
 
-```
-BENIGN vs ATTACK
-```
+[[419158, 139],
+ [2821, 82355]]
 
-**Model Used**
+Metrics:
+- ROC-AUC: **0.9999464335333705**
+- PR-AUC: **0.9997473689712688**
 
-- LightGBM
+### Level 2: optimistic row-random multiclass result
 
-**Goal**
+The multiclass classifier achieved near-perfect results on the random split. The confusion matrix showed almost complete separation across `Bot`, `BruteForce`, `DoS`, `PortScan`, and `WebAttack`, with only a few misclassifications.
 
-Detect whether network traffic is **malicious**.
+### Realistic findings
 
----
+The realistic evaluation revealed that performance was much less stable across files.
 
-### Level 2 (L2)
+Examples from time-like results:
+- some files had very high recall but extremely low precision
+- one PortScan holdout case showed strong failure to generalize to an unseen file distribution
 
-Multi-class classification:
+For the held-out file `Friday-WorkingHours-Afternoon-PortScan.pcap_ISCX.csv`, the true class was entirely `PortScan`, but predictions were mostly assigned to other families such as `Bot`, `BruteForce`, `DoS`, and `WebAttack`.
 
-- DoS  
-- PortScan  
-- BruteForce  
-- WebAttack  
-- Bot  
+## Key conclusion
 
-**Goal**
+The main research finding of this work is that **row-random split performance is highly optimistic**, while file-based and time-like evaluation exposes important challenges related to:
 
-Identify the **attack family**.
+- distribution shift
+- class imbalance
+- false positives
+- poor cross-file generalization
 
----
+This makes the project more realistic than a standard notebook that reports only high random-split accuracy.
 
-## 3. Investigate
+## Repository contents
 
-Unsupervised techniques are used to analyze attack behavior.
+- `IDS_CODE 11.ipynb` — main experiment notebook
+- `RESULTS.md` — structured result tables and interpretation
+- `REPRODUCIBILITY.md` — reproducibility notes and current gaps
+- `requirements.txt` — dependencies
+- `results/` — exported result summaries and artefacts
 
-Methods include:
+## Reproducibility note
 
-- **Isolation Forest** for anomaly detection
-- **HDBSCAN clustering** for grouping similar attack patterns
-- **Graph-based correlation** between clusters and network entities (ports)
+At the current stage, reproducibility is partial. The experiment documents the pipeline clearly, but some gaps remain:
+- package versions are not fully pinned
+- dataset download/preparation is not scripted end-to-end
+- final summary artefacts should be exported and committed in a cleaner form
 
-This stage helps analysts **understand how attacks behave within the network**.
-
----
-
-## 4. Decide
-
-Simple **rule-based playbooks** are used to map detections to response actions.
-
-| Attack | Response |
-|------|---------|
-| DoS | Rate limit or block |
-| PortScan | Temporary block |
-| BruteForce | Alert and investigate |
-| Bot | Escalate |
-
----
-
-## 5. Learn
-
-The system monitors **data drift** using:
-
-- **Population Stability Index (PSI)**
-- **Kolmogorov-Smirnov test (KS)**
-
-These metrics indicate when **model retraining may be required**.
-
----
-
-# Evaluation Strategy
-
-To better understand **model reliability**, multiple evaluation strategies were tested.
-
----
-
-## 1. Random Split (Optimistic)
-
-Standard machine learning approach:
-
-- **80% train**
-- **20% test**
-
-### Result
-
-Very high performance due to **overlapping traffic patterns**.
-
-Example:
-
-```
-L1 ROC-AUC ≈ 0.999
-```
-
-However, this evaluation is **overly optimistic**.
-
----
-
-## 2. Time-like Evaluation
-
-Data is split **chronologically**:
-
-- **Train → earlier capture files**
-- **Test → later capture files**
-
-This simulates **real IDS deployment conditions**.
-
-Results show that **performance varies significantly depending on the attack distribution**.
-
----
-
-## 3. Leave-One-File-Out (LOO)
-
-Each capture file is used as a **test set** while training on all others.
-
-This reveals how models **generalize to unseen network conditions**.
-
----
-
-# Key Findings
-
-Several interesting observations emerged from the experiments.
-
----
-
-### 1. Random splits can produce misleadingly high results
-
-Row-random evaluation produced **near-perfect scores**, but more realistic evaluations showed **significantly lower performance**.
-
----
-
-### 2. Dataset structure strongly affects multi-class classification
-
-Because many capture files contain **only one attack type**, holding out a file removes that class from training.
-
-As a result:
-
-The **Level 2 classifier often fails** when evaluated on a file containing an **unseen attack family**.
-
----
-
-### 3. Binary detection generalizes better than multi-class classification
-
-The **Level 1 detector (Attack vs Benign)** performed more consistently across files compared to **Level 2 attack-family classification**.
-
----
-
-### 4. Drift analysis indicates traffic distributions change across capture files
-
-**PSI and KS statistics** show significant **distribution differences** between training and test periods.
-
-This highlights the importance of **continuous model monitoring and retraining** in real IDS deployments.
-
----
-
-# Implementation Environment
-
-The experiments were conducted using:
-
-- **Python**
-- **Google Colab**
-- **Scikit-learn**
-- **LightGBM**
-- **HDBSCAN**
-- **NetworkX**
-
----
-
-# Limitations
-
-Several limitations were observed:
-
-- The dataset structure limits **realistic multi-class evaluation**
-- Some attack types appear **only in specific capture files**
-- Real-world networks would contain a **more continuous mix of attack behaviors**
-
-### Potential Future Work
-
-- Explore **additional cybersecurity datasets**
-- Apply **deep learning models**
-- Develop **real-time streaming IDS pipelines**
-
----
-
-# How to Run
-
-Install dependencies:
-
-```bash
-pip install -r requirements.txt
-```
-
-Open the notebook:
-
-```
-IDS_CODE.ipynb
-```
-
-Run all cells sequentially.
+See `REPRODUCIBILITY.md` for details.
